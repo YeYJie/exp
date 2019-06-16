@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/local/bin/zsh
 
 ./exp 5000 4 0.05 50
 ./exp 5000 4 0.05 100
