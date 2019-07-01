@@ -2,7 +2,6 @@ package main
 
 import (
 	"sync"
-	"sort"
 )
 
 const INF_DISTANCE = 1000000
@@ -30,19 +29,6 @@ func NewPaymentNetwork2(size int) *PaymentNetwork2 {
 func (pn *PaymentNetwork2) addEdge(from, to, weight int) {
 	pn.channels[from] = append(pn.channels[from], to)
 	pn.channels[to] = append(pn.channels[to], from)
-}
-
-func sortAndUnique(intSlice []int) []int {
-    keys := make(map[int]bool)
-    list := []int{} 
-    for _, entry := range intSlice {
-        if _, value := keys[entry]; !value {
-            keys[entry] = true
-            list = append(list, entry)
-        }
-    }    
-	sort.Ints(list)
-	return list
 }
 
 func (pn *PaymentNetwork2) calculateShortestPath() {

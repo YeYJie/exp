@@ -3,6 +3,7 @@ package main
 import (
 	"time"
 	"math/rand"
+	"sort"
 )
 
 func min(a, b int) int {
@@ -72,6 +73,30 @@ func makeRootSet(unionset []int) []int {
 	var res []int
 	for k := range set {
 		res = append(res, k)
+	}
+	return res
+}
+
+func sortAndUnique(intSlice []int) []int {
+    keys := make(map[int]bool)
+    list := []int{} 
+    for _, entry := range intSlice {
+        if _, value := keys[entry]; !value {
+            keys[entry] = true
+            list = append(list, entry)
+        }
+    }    
+	sort.Ints(list)
+	return list
+}
+
+func contain(arr []int, ele int) bool {
+	res := false
+	for _, p := range arr {
+		if ele == p {
+			res = true
+			break
+		}
 	}
 	return res
 }

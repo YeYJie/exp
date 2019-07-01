@@ -6,6 +6,7 @@ import (
 	"time"
 	"os"
 	"strconv"
+	"sync"
 )
 
 var numNodes int
@@ -24,6 +25,9 @@ func main() {
 	alpha, _ = strconv.ParseFloat(os.Args[3], 64)
 	participantsPerHub, _ = strconv.Atoi(os.Args[4])
 	numHub = int((alpha * float64(numNodes)+float64(participantsPerHub-1))/float64(participantsPerHub))
+	numLm := numNodes / 100
+
+	// fmt.Println(numLm)
 
 	rand.Seed(time.Now().UTC().UnixNano())	
 
@@ -71,8 +75,19 @@ func main() {
 		pnVC.addEdge(from, to, 1)
 	}
 
+	var wg  sync.WaitGroup
+	wg.Add(4)
+
 	// payment network
-	pnPN.calculateShortestPath()
+	// pnPN.calculateShortestPath()
+	lmsPN := make([]*Landmark, numLm)
+	go func() {
+		defer wg.Done()
+		for l := range lmsPN {
+			lmsPN[l] = NewLandmark(pnPN)
+			lmsPN[l].setRoutes(pnPN)
+		}
+	}()
 
 	// virtual channel
 	for i := 0; i < int(alpha * float64(numNodes)); i++ {
@@ -84,7 +99,15 @@ func main() {
 		}
 		pnVC.addEdge(from, to, 1)
 	}
-	pnVC.calculateShortestPath()
+	// pnVC.calculateShortestPath()
+	lmsVC := make([]*Landmark, numLm)
+	go func() {
+		defer wg.Done()
+		for l := range lmsVC {
+			lmsVC[l] = NewLandmark(pnVC)
+			lmsVC[l].setRoutes(pnVC)
+		}
+	}()
 
 	// payment hub
 	paymentHubs := make([]*PaymentHub, numHub)
@@ -102,7 +125,15 @@ func main() {
 			}
 		}
 	}
-	pnPH.calculateShortestPath()
+	// pnPH.calculateShortestPath()
+	lmsPH := make([]*Landmark, numLm)
+	go func() {
+		defer wg.Done()
+		for l := range lmsPH {
+			lmsPH[l] = NewLandmark(pnPH)
+			lmsPH[l].setRoutes(pnPH)
+		}
+	}()
 
 	// channel hub
 	channelHubs := make([]*ChannelHub, numHub)
@@ -121,7 +152,17 @@ func main() {
 			}
 		}
 	}
-	pnCH.calculateShortestPath()
+	// pnCH.calculateShortestPath()
+	lmsCH := make([]*Landmark, numLm)
+	go func() {
+		defer wg.Done()
+		for l := range lmsCH {
+			lmsCH[l] = NewLandmark(pnCH)
+			lmsCH[l].setRoutes(pnCH)
+		}
+	}()
+
+	wg.Wait()
 
 	totalLenPN, totalLenPH, totalLenCH, totalLenVC := 0, 0, 0, 0
 	for i := 0; i < numTx; i++ {
@@ -131,13 +172,23 @@ func main() {
 			i--
 			continue
 		}
-		totalLenPN += pnPN.getDistance(from, to)
-		totalLenPH += pnPH.getDistance(from, to)
-		totalLenCH += pnCH.getDistance(from, to)
-		totalLenVC += pnVC.getDistance(from, to)
+		// totalLenPN += pnPN.getDistance(from, to)
+		// totalLenPH += pnPH.getDistance(from, to)
+		// totalLenCH += pnCH.getDistance(from, to)
+		// totalLenVC += pnVC.getDistance(from, to)
+		for l := 0; l < numLm; l++ {
+			totalLenPN += lmsPN[l].getDistance(from, to, pnPN, false)
+			totalLenVC += lmsVC[l].getDistance(from, to, pnVC, false)
+			totalLenPH += lmsPH[l].getDistance(from, to, pnPH, false)
+			totalLenCH += lmsCH[l].getDistance(from, to, pnCH, false)
+		}
 	}
-	fmt.Println(float64(totalLenPN) / float64(numTx), "\t",
-				float64(totalLenVC) / float64(numTx), "\t",
-				float64(totalLenPH) / float64(numTx), "\t",
-				float64(totalLenCH) / float64(numTx), "\t")
+	// fmt.Println(float64(totalLenPN) / float64(numTx) / float64(numLm), "\t",
+	// 			float64(totalLenVC) / float64(numTx) / float64(numLm), "\t",
+	// 			float64(totalLenPH) / float64(numTx) / float64(numLm), "\t",
+	// 			float64(totalLenCH) / float64(numTx) / float64(numLm), "\t")
+	fmt.Println(float64(totalLenPN) / float64(numTx) / float64(numLm), "\t",
+				float64(totalLenVC) / float64(numTx) / float64(numLm), "\t",
+				float64(totalLenPH) / float64(numTx) / float64(numLm), "\t",
+				float64(totalLenCH) / float64(numTx) / float64(numLm), "\t")
 }
