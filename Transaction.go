@@ -8,6 +8,10 @@ const (
 	VCTX
 )
 
+type Tx struct {
+	from int
+	to int
+}
 
 type Transaction struct {
 	id 			int

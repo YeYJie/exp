@@ -77,7 +77,6 @@ func (pn *PaymentNetwork2) calculateShortestPath() {
 		}()
 	}
 	wg.Wait()
-	pn.channels = nil
 }
 
 func (pn *PaymentNetwork2) getDistance(from, to int) int {

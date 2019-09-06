@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 )
 
 var numNodes int
@@ -19,19 +20,18 @@ var participantsPerHub int
 
 func main() {
 	numNodes, _ = strconv.Atoi(os.Args[1])
-	channelRatio, _ := strconv.Atoi(os.Args[2])
+	channelRatio := 4
 	numChannels = numNodes * channelRatio
 	numTx = numNodes * 100
-	alpha, _ = strconv.ParseFloat(os.Args[3], 64)
-	participantsPerHub, _ = strconv.Atoi(os.Args[4])
-	numHub = int((alpha * float64(numNodes)+float64(participantsPerHub-1))/float64(participantsPerHub))
+	alpha, _ = strconv.ParseFloat(os.Args[2], 64)
+	numJoin := int(alpha * float64(numNodes))
+	participantsPerHub, _ = strconv.Atoi(os.Args[3])
+	numHub = int(float64(numJoin+participantsPerHub-1)/float64(participantsPerHub))
 	numLm := numNodes / 100
-
-	// fmt.Println(numLm)
 
 	rand.Seed(time.Now().UTC().UnixNano())	
 
-	pnPN := NewPaymentNetwork2(numNodes)
+	// pnPN := NewPaymentNetwork2(numNodes)
 	pnPH := NewPaymentNetwork2(numNodes)
 	pnCH := NewPaymentNetwork2(numNodes)
 	pnVC := NewPaymentNetwork2(numNodes)
@@ -52,8 +52,8 @@ func main() {
 		c := NewChannel(from, to, 0)
 		channels = append(channels, c)
 		nodes[from].registerChannel(c)
-		nodes[to].registerChannel(c)
-		pnPN.addEdge(from, to, 1)
+        nodes[to].registerChannel(c)
+		// pnPN.addEdge(from, to, 1)
 		pnPH.addEdge(from, to, 1)
 		pnCH.addEdge(from, to, 1)
 		pnVC.addEdge(from, to, 1)
@@ -68,29 +68,29 @@ func main() {
 		c := NewChannel(from, to, 0)
 		channels = append(channels, c)
 		nodes[from].registerChannel(c)
-		nodes[to].registerChannel(c)
-		pnPN.addEdge(from, to, 1)
+        nodes[to].registerChannel(c)
+		// pnPN.addEdge(from, to, 1)
 		pnPH.addEdge(from, to, 1)
 		pnCH.addEdge(from, to, 1)
 		pnVC.addEdge(from, to, 1)
 	}
 
 	var wg  sync.WaitGroup
-	wg.Add(4)
+	wg.Add(3)
 
-	// payment network
+	// // payment network
 	// pnPN.calculateShortestPath()
-	lmsPN := make([]*Landmark, numLm)
-	go func() {
-		defer wg.Done()
-		for l := range lmsPN {
-			lmsPN[l] = NewLandmark(pnPN)
-			lmsPN[l].setRoutes(pnPN)
-		}
-	}()
+	// lmsPN := make([]*Landmark, numLm)
+	// go func() {
+	// 	defer wg.Done()
+	// 	for l := range lmsPN {
+	// 		lmsPN[l] = NewLandmark(pnPN)
+	// 		lmsPN[l].setRoutes(pnPN)
+	// 	}
+	// }()
 
 	// virtual channel
-	for i := 0; i < int(alpha * float64(numNodes)); i++ {
+	for i := 0; i < numJoin; i++ {
 		from := rand.Intn(numNodes)
 		to := rand.Intn(numNodes)
 		if from == to {
@@ -99,7 +99,7 @@ func main() {
 		}
 		pnVC.addEdge(from, to, 1)
 	}
-	// pnVC.calculateShortestPath()
+	pnVC.calculateShortestPath()
 	lmsVC := make([]*Landmark, numLm)
 	go func() {
 		defer wg.Done()
@@ -115,17 +115,19 @@ func main() {
 		paymentHubs[i] = NewPaymentHub(pnPH)
 	}
 	paymentHubNodes := make(map[int]bool)
+	joinedPH := 0
 	for i := range paymentHubs {
-		for j := 0; j < participantsPerHub; {
+		for j := 0; j < participantsPerHub && joinedPH <= numJoin; {
 			nodeId := rand.Intn(numNodes)
 			if _, ok := paymentHubNodes[nodeId]; !ok {
 				paymentHubNodes[nodeId] = true
 				paymentHubs[i].join(nodes[nodeId])
 				j++
+				joinedPH++
 			}
 		}
 	}
-	// pnPH.calculateShortestPath()
+	pnPH.calculateShortestPath()
 	lmsPH := make([]*Landmark, numLm)
 	go func() {
 		defer wg.Done()
@@ -141,18 +143,20 @@ func main() {
 		channelHubs[i] = NewChannelHub(pnCH)
 	}
 	channelHubChannels := make(map[int]bool)
+	joinedCH := 0
 	for i := range channelHubs {
-		for j := 0; j < participantsPerHub; {
+		for j := 0; j < participantsPerHub && joinedCH <= numJoin; {
 			nodeId := rand.Intn(numNodes)
 			channel := nodes[nodeId].getRandomChannel()
 			if _, ok := channelHubChannels[channel.id]; !ok {
 				channelHubChannels[channel.id] = true
 				channelHubs[i].join(channel)
 				j++
+				joinedCH++
 			}
 		}
 	}
-	// pnCH.calculateShortestPath()
+	pnCH.calculateShortestPath()
 	lmsCH := make([]*Landmark, numLm)
 	go func() {
 		defer wg.Done()
@@ -164,7 +168,11 @@ func main() {
 
 	wg.Wait()
 
-	totalLenPN, totalLenPH, totalLenCH, totalLenVC := 0, 0, 0, 0
+	totalLenPNFW, totalLenPHFW, totalLenCHFW, totalLenVCFW := int64(0), int64(0), int64(0), int64(0)
+	totalLenPNSM, totalLenPHSM, totalLenCHSM, totalLenVCSM := int64(0), int64(0), int64(0), int64(0)
+	_ = totalLenPNFW
+	_ = totalLenPNSM
+	txChan := make(chan Tx, numTx)
 	for i := 0; i < numTx; i++ {
 		from := rand.Intn(numNodes)
 		to := rand.Intn(numNodes)
@@ -172,23 +180,50 @@ func main() {
 			i--
 			continue
 		}
-		// totalLenPN += pnPN.getDistance(from, to)
-		// totalLenPH += pnPH.getDistance(from, to)
-		// totalLenCH += pnCH.getDistance(from, to)
-		// totalLenVC += pnVC.getDistance(from, to)
-		for l := 0; l < numLm; l++ {
-			totalLenPN += lmsPN[l].getDistance(from, to, pnPN, false)
-			totalLenVC += lmsVC[l].getDistance(from, to, pnVC, false)
-			totalLenPH += lmsPH[l].getDistance(from, to, pnPH, false)
-			totalLenCH += lmsCH[l].getDistance(from, to, pnCH, false)
-		}
+		txChan <- Tx{from: from, to: to}
+		// // totalLenPNFW += pnPN.getDistance(from, to)
+		// totalLenVCFW += pnVC.getDistance(from, to)
+		// totalLenPHFW += pnPH.getDistance(from, to)
+		// totalLenCHFW += pnCH.getDistance(from, to)
+		// for l := 0; l < numLm; l++ {
+		// 	// totalLenPNSM += lmsPN[l].getDistance(from, to, pnPN, false)
+		// 	totalLenVCSM += lmsVC[l].getDistance(from, to, pnVC, false)
+		// 	totalLenPHSM += lmsPH[l].getDistance(from, to, pnPH, false)
+		// 	totalLenCHSM += lmsCH[l].getDistance(from, to, pnCH, false)
+		// }
 	}
-	// fmt.Println(float64(totalLenPN) / float64(numTx) / float64(numLm), "\t",
-	// 			float64(totalLenVC) / float64(numTx) / float64(numLm), "\t",
-	// 			float64(totalLenPH) / float64(numTx) / float64(numLm), "\t",
-	// 			float64(totalLenCH) / float64(numTx) / float64(numLm), "\t")
-	fmt.Println(float64(totalLenPN) / float64(numTx) / float64(numLm), "\t",
-				float64(totalLenVC) / float64(numTx) / float64(numLm), "\t",
-				float64(totalLenPH) / float64(numTx) / float64(numLm), "\t",
-				float64(totalLenCH) / float64(numTx) / float64(numLm), "\t")
+	wg.Add(12)
+	for g := 0; g < 12; g++ {
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case tx := <- txChan:			
+					atomic.AddInt64(&totalLenVCFW, int64(pnVC.getDistance(tx.from, tx.to)))
+					atomic.AddInt64(&totalLenPHFW, int64(pnPH.getDistance(tx.from, tx.to)))
+					atomic.AddInt64(&totalLenCHFW, int64(pnCH.getDistance(tx.from, tx.to)))
+					for l := 0; l < numLm; l++ {
+						atomic.AddInt64(&totalLenVCSM, int64(lmsVC[l].getDistance(tx.from, tx.to, pnVC, false)))
+						atomic.AddInt64(&totalLenPHSM, int64(lmsPH[l].getDistance(tx.from, tx.to, pnPH, false)))
+						atomic.AddInt64(&totalLenCHSM, int64(lmsCH[l].getDistance(tx.from, tx.to, pnCH, false)))
+					}
+				default:
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	fmt.Printf("%d %.2f %d :  %.2f  %.2f  %.2f  %.1f%%  %.1f%%  %.2f  %.2f  %.2f  %.1f%%  %.1f%%\n", 
+				numNodes, alpha, participantsPerHub,
+				float64(atomic.LoadInt64(&totalLenVCFW)) / float64(numTx),
+				float64(atomic.LoadInt64(&totalLenPHFW)) / float64(numTx),
+				float64(atomic.LoadInt64(&totalLenCHFW)) / float64(numTx),
+				100.0 * float64(atomic.LoadInt64(&totalLenPHFW) - atomic.LoadInt64(&totalLenCHFW)) / float64(atomic.LoadInt64(&totalLenPHFW)),
+				100.0 * float64(atomic.LoadInt64(&totalLenVCFW) - atomic.LoadInt64(&totalLenCHFW)) / float64(atomic.LoadInt64(&totalLenVCFW)),
+				float64(atomic.LoadInt64(&totalLenVCSM)) / float64(numTx) / float64(numLm),
+				float64(atomic.LoadInt64(&totalLenPHSM)) / float64(numTx) / float64(numLm),
+				float64(atomic.LoadInt64(&totalLenCHSM)) / float64(numTx) / float64(numLm),
+				100.0 * float64(atomic.LoadInt64(&totalLenPHSM) - atomic.LoadInt64(&totalLenCHSM)) / float64(atomic.LoadInt64(&totalLenPHSM)),
+				100.0 * float64(atomic.LoadInt64(&totalLenVCSM) - atomic.LoadInt64(&totalLenCHSM)) / float64(atomic.LoadInt64(&totalLenVCSM)))
 }
